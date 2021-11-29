@@ -1,0 +1,499 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "IPVS public API",
+    "version": "2.0",
+    "contact": {
+      "name": "Pavel Fiskovich",
+      "url": "https://blog.bullgare.com/2020/07/complete-list-of-swagger-options-to-protobuf-file"
+    }
+  },
+  "tags": [
+    {
+      "name": "IpvsAdmin"
+    }
+  ],
+  "schemes": [
+    "http"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v2/ipvs/real-servers/update": {
+      "post": {
+        "summary": "Update real servers for one IP-virtual server",
+        "operationId": "IpvsAdmin_UpdateRealServers",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/ipvsUpdateRealServersResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ipvsUpdateRealServersRequest"
+            }
+          }
+        ],
+        "tags": [
+          "IpvsAdmin"
+        ]
+      }
+    },
+    "/v2/ipvs/virtual-server/find": {
+      "post": {
+        "summary": "Find IP-virtual server by its identity",
+        "operationId": "IpvsAdmin_FindVirtualServer",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/ipvsFindVirtualServerResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ipvsFindVirtualServerRequest"
+            }
+          }
+        ],
+        "tags": [
+          "IpvsAdmin"
+        ]
+      }
+    },
+    "/v2/ipvs/virtual-servers/list": {
+      "post": {
+        "summary": "List all IP-virtual servers with/without theirs real servers",
+        "operationId": "IpvsAdmin_ListVirtualServers",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/ipvsListVirtualServersResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ipvsListVirtualServersRequest"
+            }
+          }
+        ],
+        "tags": [
+          "IpvsAdmin"
+        ]
+      }
+    },
+    "/v2/ipvs/virtual-servers/update": {
+      "post": {
+        "summary": "Update IP-virtual servers",
+        "operationId": "IpvsAdmin_UpdateVirtualServers",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/ipvsUpdateVirtualServersResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ipvsUpdateVirtualServersRequest"
+            }
+          }
+        ],
+        "tags": [
+          "IpvsAdmin"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "IssueReasonCode": {
+      "type": "string",
+      "enum": [
+        "ExternalError",
+        "VirtualServerNotFound",
+        "RealServerNotFound"
+      ],
+      "default": "ExternalError",
+      "title": "- ExternalError: external error that happens out from external libs\n - VirtualServerNotFound: when delete/update VS is not exist subject\n - RealServerNotFound: when delete/update RS is not exist subject"
+    },
+    "ipvsFindVirtualServerRequest": {
+      "type": "object",
+      "properties": {
+        "virtualServerIdentity": {
+          "$ref": "#/definitions/ipvsVirtualServerIdentity"
+        },
+        "includeReals": {
+          "type": "boolean",
+          "title": "includeReals add real servers into response"
+        }
+      },
+      "title": "FindVirtualServerRequest it gets-or-fails the IP-virtual server by its identity"
+    },
+    "ipvsFindVirtualServerResponse": {
+      "type": "object",
+      "properties": {
+        "virtualServer": {
+          "$ref": "#/definitions/ipvsVirtualServerWithReals"
+        }
+      },
+      "title": "FindVirtualServerResponse response with virtual server with/without their real server(s)"
+    },
+    "ipvsIssueReason": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/definitions/IssueReasonCode",
+          "title": "issue reason code"
+        },
+        "message": {
+          "type": "string",
+          "title": "issue reason in textual format"
+        }
+      },
+      "title": "IssueReason issue reason on update/delete operation"
+    },
+    "ipvsListVirtualServersRequest": {
+      "type": "object",
+      "properties": {
+        "includeReals": {
+          "type": "boolean",
+          "title": "includeReals add real servers into response"
+        }
+      },
+      "title": "ListVirtualServersRequest ask to list all virtual servers with/without its reals"
+    },
+    "ipvsListVirtualServersResponse": {
+      "type": "object",
+      "properties": {
+        "virtualServers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ipvsVirtualServerWithReals"
+          }
+        }
+      },
+      "title": "ListVirtualServersResponse list all virtual servers with/without its reals"
+    },
+    "ipvsNetworkTransport": {
+      "type": "string",
+      "enum": [
+        "TCP",
+        "UDP"
+      ],
+      "default": "TCP",
+      "title": "NetworkTransport is an IP-network type transport to use with instance of VirtualServer"
+    },
+    "ipvsPacketFwdMethod": {
+      "type": "string",
+      "enum": [
+        "DirectRouting",
+        "Tunnel",
+        "Masquerading"
+      ],
+      "default": "DirectRouting",
+      "description": "- DirectRouting: DirectRouting is direct routing\n - Tunnel: Tunnel uses ipip encapsulation\n - Masquerading: Masquerading is network access translation (NAT)",
+      "title": "PacketFwdMethod represents method of forwarding packets in VS from user to real server(s)"
+    },
+    "ipvsRealServer": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "$ref": "#/definitions/ipvsRealServerAddress"
+        },
+        "packetForwarder": {
+          "$ref": "#/definitions/ipvsPacketFwdMethod",
+          "title": "packet_forwarder use one of (DR | TUN | NAT) packet forward method"
+        },
+        "weight": {
+          "type": "integer",
+          "format": "int64",
+          "title": "Weight is an integer specifying the capacity of a server relative to the others in the pool.\nThe valid values of weight are 0 through to 65535. The default is 1.\nQuiescent servers are specified with a weight of zero. A quiescent server will receive no new jobs\nbut still serve the existing jobs, for all scheduling algorithms distributed with the Linux Virtual Server.\nSetting a quiescent server may be useful if the server is overloaded or needs to be\ntaken out of service for maintenance"
+        },
+        "upperThreshold": {
+          "type": "integer",
+          "format": "int64",
+          "title": "upper_threshold is an integer specifying the upper connection threshold of a server.\nThe valid values of uthreshold are 0 through to 65535. The default is 0,\nwhich means the upper connection threshold is not set. If uthreshold is set with other values,\nno new connections will be sent to the server when the number of its connections exceeds its\nupper connection threshold"
+        },
+        "lowerThreshold": {
+          "type": "integer",
+          "format": "int64",
+          "title": "lower_threshold is an integer specifying the lower connection threshold of a server.\nThe valid values of lthreshold are 0 through to 65535. The default is 0, which means the lower\nconnection threshold is not set. If lthreshold is set with other values, the server will receive\nnew connections when the number of its connections drops below its lower connection threshold.\nIf lthreshold is not set but uthreshold is set, the server will receive new connections when the\nnumber of its connections drops below three forth of its upper connection threshold"
+        }
+      },
+      "title": "RealServer is the real server"
+    },
+    "ipvsRealServerAddress": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string",
+          "title": "host is IP or host name"
+        },
+        "port": {
+          "type": "integer",
+          "format": "int64",
+          "title": "port is port \u003e 0"
+        }
+      },
+      "title": "RealServerAddress the IP-network real server address"
+    },
+    "ipvsRealServerIssue": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "$ref": "#/definitions/ipvsIssueReason"
+        },
+        "delete": {
+          "$ref": "#/definitions/ipvsRealServerAddress",
+          "title": "when-delete on delete operation"
+        },
+        "update": {
+          "$ref": "#/definitions/ipvsRealServer",
+          "title": "when-update on update operation"
+        }
+      },
+      "title": "RealServerIssue issue that happens on update/delete real server"
+    },
+    "ipvsScheduleMethod": {
+      "type": "string",
+      "enum": [
+        "RoundRobin",
+        "WeightedRoundRobin",
+        "LeastConnection",
+        "WeightedLeastConnection",
+        "LocalityBasedLeastConnection",
+        "LocalityBasedLeastConnectionWithReplication",
+        "DestinationHashing",
+        "SourceHashing",
+        "ShortestExpectedDelay",
+        "NeverQueue",
+        "MaglevHashing",
+        "WeightedFailOver",
+        "Overflow"
+      ],
+      "default": "RoundRobin",
+      "description": "- RoundRobin: (rr) - round robin distributes jobs equally amongst the available real servers\n - WeightedRoundRobin: (wrr) - Weighted Round Robin: assigns jobs to real servers proportionally to there real servers' weight.\nServers with higher weights receive new jobs first and get more jobs than servers with lower weights.\nServers with equal weights get an equal distribution of new jobs.\n - LeastConnection: (lc) - Least-Connection: assigns more jobs to real servers with fewer active jobs.\n - WeightedLeastConnection: (wlc) - Weighted Least-Connection: assigns more jobs to servers with fewer jobs\nand relative to the real servers' weight (Ci/Wi). This is the default.\n - LocalityBasedLeastConnection: (lblc) - Locality-Based Least-Connection: assigns jobs destined for the same\nIP address to the same server if the server is not overloaded and available;\notherwise assign jobs to servers with fewer jobs, and keep it for future assignment.\n - LocalityBasedLeastConnectionWithReplication: (lblcr) - Locality-Based Least-Connection with Replication:\nassigns jobs destined for the same IP address to the least-connection node in the server set for the IP address.\nIf all the node in the server set are over loaded, it picks up a node with fewer jobs in the cluster and\nadds it in the sever set for the target. If the server set has not been modified for the specified time,\nthe most loaded node is removed from the server set, in order to avoid high degree of replication\n - DestinationHashing: (dh) - Destination Hashing: assigns jobs to servers through looking up a statically assigned\nhash table by their destination IP addresses\n - SourceHashing: (sh) - Source Hashing: assigns jobs to servers through looking up a statically assigned hash\ntable by their source IP addresses\n - ShortestExpectedDelay: (sed) - Shortest Expected Delay: assigns an incoming job to the server with the\nshortest expected delay. The expected delay that the job will experience is (Ci + 1) / Ui if sent to\nthe ith server, in which Ci is the number of jobs on the the ith server and Ui is the\nfixed service rate (weight) of the ith server\n - NeverQueue: (nq) - Never Queue: assigns an incoming job to an idle server if there is, instead of\nwaiting for a fast one; if all the servers are busy, it adopts the Shortest Expected Delay policy to\nassign the job\n - MaglevHashing: (mh) The mh algorithm is to assign a preference list of all the lookup\ntable positions to each destination and populate the table with\nthe most-preferred position of destinations. Then it is to select\ndestination with the hash key of source IP address through looking\nup a the lookup table\n - WeightedFailOver: (fo) - all other scheduling modules implement some form of load balancing,\nwhile this offers a simple failover solution. The weighted failover scheduling algorithm directs\nnetwork connections to the server with the highest weight that is currently available\nSee in https://serverfault.com/questions/950447/keepalived-what-are-the-fo-and-mh-lvs-scheduling-algorithms\n - Overflow: (ovf) - loadbalancing according to number of active\nconnections , will keep all connections to the node with the highest weight\nand overflow to the next node if the number of connections exceeds the node's weight.\nNote that this scheduler might not be suitable for UDP because it only uses active connections",
+      "title": "ScheduleMethod is an algorithm for allocating TCP connections and/or UDP datagrams onto real servers\nsee in http://www.linuxvirtualserver.org/docs/scheduling.html"
+    },
+    "ipvsUpdateRealServersRequest": {
+      "type": "object",
+      "properties": {
+        "forceUpsert": {
+          "type": "boolean"
+        },
+        "virtualServerIdentity": {
+          "$ref": "#/definitions/ipvsVirtualServerIdentity"
+        },
+        "delete": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ipvsRealServerAddress"
+          }
+        },
+        "update": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ipvsRealServer"
+          }
+        }
+      },
+      "title": "UpdateRealServersRequest request foe delete+update real server(s)"
+    },
+    "ipvsUpdateRealServersResponse": {
+      "type": "object",
+      "properties": {
+        "issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ipvsRealServerIssue"
+          }
+        }
+      },
+      "title": "UpdateRealServersResponse collects issues on update real servers"
+    },
+    "ipvsUpdateVirtualServersRequest": {
+      "type": "object",
+      "properties": {
+        "forceUpsert": {
+          "type": "boolean"
+        },
+        "delete": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ipvsVirtualServerIdentity"
+          }
+        },
+        "update": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ipvsVirtualServer"
+          }
+        }
+      },
+      "title": "UpdateVirtualServersRequest request for delete+update virtual server(s)"
+    },
+    "ipvsUpdateVirtualServersResponse": {
+      "type": "object",
+      "properties": {
+        "issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ipvsVirtualServerIssue"
+          }
+        }
+      },
+      "title": "UpdateRealServersResponse collects issues on update IP-virtual servers"
+    },
+    "ipvsVirtualServer": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "$ref": "#/definitions/ipvsVirtualServerIdentity"
+        },
+        "scheduleMethod": {
+          "$ref": "#/definitions/ipvsScheduleMethod"
+        }
+      },
+      "title": "VirtualServer an IP virtual server are is part od IPVS arch"
+    },
+    "ipvsVirtualServerAddress": {
+      "type": "object",
+      "properties": {
+        "network": {
+          "$ref": "#/definitions/ipvsNetworkTransport"
+        },
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "title": "VirtualServerAddress represents IP network address of virtual server"
+    },
+    "ipvsVirtualServerIdentity": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "$ref": "#/definitions/ipvsVirtualServerAddress"
+        },
+        "firewallMark": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "title": "VirtualServerIdentity virtual server may be identified by address or firewall-mark"
+    },
+    "ipvsVirtualServerIssue": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "$ref": "#/definitions/ipvsIssueReason"
+        },
+        "delete": {
+          "$ref": "#/definitions/ipvsVirtualServerIdentity",
+          "title": "when-delete on delete operation"
+        },
+        "update": {
+          "$ref": "#/definitions/ipvsVirtualServer",
+          "title": "when-update on update operation"
+        }
+      },
+      "title": "VirtualServerIssue issue that happens on update/delete IP-virtual server"
+    },
+    "ipvsVirtualServerWithReals": {
+      "type": "object",
+      "properties": {
+        "virtualServer": {
+          "$ref": "#/definitions/ipvsVirtualServer"
+        },
+        "realServers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ipvsRealServer"
+          }
+        }
+      },
+      "title": "VirtualServerWithReals IP-virtual server and associated its real IP servers"
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    }
+  }
+}

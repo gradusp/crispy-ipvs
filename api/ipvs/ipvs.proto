@@ -1,0 +1,317 @@
+syntax = "proto3";
+package crispy.ipvs;
+
+import "google/protobuf/descriptor.proto";
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+option go_package = "/ipvs";
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "IPVS public API";
+    version: "2.0";
+    contact: {
+      name: "Pavel Fiskovich";
+      url: "https://blog.bullgare.com/2020/07/complete-list-of-swagger-options-to-protobuf-file";
+    };
+  };
+  schemes: [HTTP];
+  consumes: "application/json";
+  produces: "application/json";
+};
+
+//**
+// IPVSADM docs are https://linux.die.net/man/8/ipvsadm
+//**
+
+
+//IpvsAdmin admin service for Linux IP-Virtual-Server capability
+service IpvsAdmin {
+  // Find IP-virtual server by its identity
+  rpc FindVirtualServer(FindVirtualServerRequest) returns(FindVirtualServerResponse) {
+    option (google.api.http) = {
+      post: "/v2/ipvs/virtual-server/find"
+      body: "*"
+    };
+  }
+
+  // List all IP-virtual servers with/without theirs real servers
+  rpc ListVirtualServers(ListVirtualServersRequest) returns(ListVirtualServersResponse) {
+    option (google.api.http) = {
+      post: "/v2/ipvs/virtual-servers/list"
+      body: "*"
+    };
+  }
+
+  // Update IP-virtual servers
+  rpc UpdateVirtualServers(UpdateVirtualServersRequest) returns(UpdateVirtualServersResponse) {
+    option (google.api.http) = {
+      post: "/v2/ipvs/virtual-servers/update"
+      body: "*"
+    };
+  }
+
+  // Update real servers for one IP-virtual server
+  rpc UpdateRealServers(UpdateRealServersRequest) returns(UpdateRealServersResponse) {
+    option (google.api.http) = {
+      post: "/v2/ipvs/real-servers/update"
+      body: "*"
+    };
+  }
+}
+
+extend google.protobuf.EnumValueOptions {
+  //schedule_alg_id method algorithm
+  optional string schedule_alg = 50000;
+
+  //transport identifiers a ne transport
+  optional string transport = 50001;
+
+  //fwd_alg packet forwarding algorithm
+  optional string fwd_alg = 50002;
+}
+
+//UpdateVirtualServersRequest request for delete+update virtual server(s)
+message UpdateVirtualServersRequest {
+  bool force_upsert = 1;
+  repeated VirtualServerIdentity delete = 2;
+  repeated VirtualServer update = 3;
+}
+
+//UpdateRealServersRequest request foe delete+update real server(s)
+message UpdateRealServersRequest {
+  bool force_upsert = 1;
+  VirtualServerIdentity virtualServerIdentity = 2;
+  repeated RealServerAddress delete = 3;
+  repeated RealServer update = 4;
+}
+
+//IssueReason issue reason on update/delete operation
+message IssueReason {
+  enum Code {
+    //external error that happens out from external libs
+    ExternalError = 0;
+
+    //when delete/update VS is not exist subject
+    VirtualServerNotFound = 1;
+
+    //when delete/update RS is not exist subject
+    RealServerNotFound = 2;
+  }
+  //issue reason code
+  Code code = 1;
+  //issue reason in textual format
+  string message = 2;
+}
+
+//VirtualServerIssue issue that happens on update/delete IP-virtual server
+message VirtualServerIssue {
+  IssueReason reason = 1;
+  oneof when {
+    //when-delete on delete operation
+    VirtualServerIdentity delete = 2;
+    //when-update on update operation
+    VirtualServer update = 3;
+  }
+}
+
+//RealServerIssue issue that happens on update/delete real server
+message RealServerIssue {
+  IssueReason reason = 1;
+  oneof when {
+    //when-delete on delete operation
+    RealServerAddress delete = 2;
+    //when-update on update operation
+    RealServer update = 3;
+  }
+}
+
+//UpdateRealServersResponse collects issues on update real servers
+message UpdateRealServersResponse {
+  repeated RealServerIssue issues = 1;
+}
+
+//UpdateRealServersResponse collects issues on update IP-virtual servers
+message UpdateVirtualServersResponse {
+  repeated VirtualServerIssue issues = 1;
+}
+
+
+//ListVirtualServersRequest ask to list all virtual servers with/without its reals
+message ListVirtualServersRequest{
+  //includeReals add real servers into response
+  bool includeReals = 1;
+}
+
+//ListVirtualServersResponse list all virtual servers with/without its reals
+message ListVirtualServersResponse{
+  repeated VirtualServerWithReals virtualServers = 1;
+}
+
+//FindVirtualServerRequest it gets-or-fails the IP-virtual server by its identity
+message FindVirtualServerRequest{
+  VirtualServerIdentity virtualServerIdentity = 1;
+  //includeReals add real servers into response
+  bool includeReals = 2;
+}
+
+//FindVirtualServerResponse response with virtual server with/without their real server(s)
+message FindVirtualServerResponse{
+  VirtualServerWithReals virtualServer = 1;
+}
+
+//ScheduleMethod is an algorithm for allocating TCP connections and/or UDP datagrams onto real servers
+//see in http://www.linuxvirtualserver.org/docs/scheduling.html
+enum ScheduleMethod {
+  //(rr) - round robin distributes jobs equally amongst the available real servers
+  RoundRobin = 0 [(schedule_alg) = "rr"];
+
+  //(wrr) - Weighted Round Robin: assigns jobs to real servers proportionally to there real servers' weight.
+  //Servers with higher weights receive new jobs first and get more jobs than servers with lower weights.
+  //Servers with equal weights get an equal distribution of new jobs.
+  WeightedRoundRobin = 1 [(schedule_alg) = "wrr"];
+
+  //(lc) - Least-Connection: assigns more jobs to real servers with fewer active jobs.
+  LeastConnection = 2 [(schedule_alg) = "lc"];
+
+  //(wlc) - Weighted Least-Connection: assigns more jobs to servers with fewer jobs
+  //and relative to the real servers' weight (Ci/Wi). This is the default.
+  WeightedLeastConnection = 3 [(schedule_alg) = "wlc"];
+
+  //(lblc) - Locality-Based Least-Connection: assigns jobs destined for the same
+  //IP address to the same server if the server is not overloaded and available;
+  //otherwise assign jobs to servers with fewer jobs, and keep it for future assignment.
+  LocalityBasedLeastConnection = 4 [(schedule_alg) = "lblc"];
+
+  //(lblcr) - Locality-Based Least-Connection with Replication:
+  //assigns jobs destined for the same IP address to the least-connection node in the server set for the IP address.
+  //If all the node in the server set are over loaded, it picks up a node with fewer jobs in the cluster and
+  //adds it in the sever set for the target. If the server set has not been modified for the specified time,
+  //the most loaded node is removed from the server set, in order to avoid high degree of replication
+  LocalityBasedLeastConnectionWithReplication = 5 [(schedule_alg) = "lblcr"];
+
+  //(dh) - Destination Hashing: assigns jobs to servers through looking up a statically assigned
+  //hash table by their destination IP addresses
+  DestinationHashing = 6 [(schedule_alg) = "dh"];
+
+  //(sh) - Source Hashing: assigns jobs to servers through looking up a statically assigned hash
+  //table by their source IP addresses
+  SourceHashing = 7 [(schedule_alg) = "sh"];
+
+  //(sed) - Shortest Expected Delay: assigns an incoming job to the server with the
+  //shortest expected delay. The expected delay that the job will experience is (Ci + 1) / Ui if sent to
+  //the ith server, in which Ci is the number of jobs on the the ith server and Ui is the
+  //fixed service rate (weight) of the ith server
+  ShortestExpectedDelay = 8 [(schedule_alg) = "sed"];
+
+  //(nq) - Never Queue: assigns an incoming job to an idle server if there is, instead of
+  //waiting for a fast one; if all the servers are busy, it adopts the Shortest Expected Delay policy to
+  //assign the job
+  NeverQueue = 9 [(schedule_alg) = "nq"];
+
+  //(mh) The mh algorithm is to assign a preference list of all the lookup
+  //table positions to each destination and populate the table with
+  //the most-preferred position of destinations. Then it is to select
+  //destination with the hash key of source IP address through looking
+  //up a the lookup table
+  MaglevHashing = 10 [(schedule_alg) = "mh"];
+
+  //(fo) - all other scheduling modules implement some form of load balancing,
+  //while this offers a simple failover solution. The weighted failover scheduling algorithm directs
+  //network connections to the server with the highest weight that is currently available
+  //See in https://serverfault.com/questions/950447/keepalived-what-are-the-fo-and-mh-lvs-scheduling-algorithms
+  WeightedFailOver = 11 [(schedule_alg) = "fo"];
+
+  //(ovf) - loadbalancing according to number of active
+  //connections , will keep all connections to the node with the highest weight
+  //and overflow to the next node if the number of connections exceeds the node's weight.
+  //Note that this scheduler might not be suitable for UDP because it only uses active connections
+  Overflow = 12 [(schedule_alg) = "ovf"];
+}
+
+//NetworkTransport is an IP-network type transport to use with instance of VirtualServer
+enum NetworkTransport {
+  TCP = 0 [(transport) = "tcp"];
+  UDP = 1 [(transport) = "udp"];
+}
+
+//PacketFwdMethod represents method of forwarding packets in VS from user to real server(s)
+enum PacketFwdMethod {
+  //DirectRouting is direct routing
+  DirectRouting = 0 [(fwd_alg)="dr"];
+
+  //Tunnel uses ipip encapsulation
+  Tunnel = 1 [(fwd_alg)="tun"];
+
+  //Masquerading is network access translation (NAT)
+  Masquerading = 2 [(fwd_alg)="nat"];
+}
+
+
+//VirtualServerAddress represents IP network address of virtual server
+message VirtualServerAddress {
+  NetworkTransport network = 1;
+  string host = 2;
+  uint32 port = 3;
+}
+
+//VirtualServerIdentity virtual server may be identified by address or firewall-mark
+message VirtualServerIdentity{
+  oneof by {
+    VirtualServerAddress address = 1;
+    uint32 firewallMark = 2;
+  }
+}
+
+//VirtualServer an IP virtual server are is part od IPVS arch
+message VirtualServer {
+  VirtualServerIdentity identity = 1;
+  ScheduleMethod schedule_method = 2;
+}
+
+//VirtualServerWithReals IP-virtual server and associated its real IP servers
+message VirtualServerWithReals {
+  VirtualServer virtualServer = 1;
+  repeated RealServer realServers = 2;
+}
+
+//RealServerAddress the IP-network real server address
+message RealServerAddress {
+  //host is IP or host name
+  string host = 1;
+  //port is port > 0
+  uint32 port = 2;
+}
+
+
+//RealServer is the real server
+message RealServer {
+  RealServerAddress address = 1;
+
+  //packet_forwarder use one of (DR | TUN | NAT) packet forward method
+  PacketFwdMethod packet_forwarder = 2;
+
+  //Weight is an integer specifying the capacity of a server relative to the others in the pool.
+  //The valid values of weight are 0 through to 65535. The default is 1.
+  //Quiescent servers are specified with a weight of zero. A quiescent server will receive no new jobs
+  //but still serve the existing jobs, for all scheduling algorithms distributed with the Linux Virtual Server.
+  //Setting a quiescent server may be useful if the server is overloaded or needs to be
+  //taken out of service for maintenance
+  uint32 weight = 3;
+
+  //upper_threshold is an integer specifying the upper connection threshold of a server.
+  //The valid values of uthreshold are 0 through to 65535. The default is 0,
+  //which means the upper connection threshold is not set. If uthreshold is set with other values,
+  //no new connections will be sent to the server when the number of its connections exceeds its
+  //upper connection threshold
+  uint32 upper_threshold = 4;
+
+  //lower_threshold is an integer specifying the lower connection threshold of a server.
+  //The valid values of lthreshold are 0 through to 65535. The default is 0, which means the lower
+  //connection threshold is not set. If lthreshold is set with other values, the server will receive
+  //new connections when the number of its connections drops below its lower connection threshold.
+  //If lthreshold is not set but uthreshold is set, the server will receive new connections when the
+  //number of its connections drops below three forth of its upper connection threshold
+  uint32 lower_threshold = 5;
+}
