@@ -2,6 +2,7 @@ package ipvs
 
 import (
 	"net"
+	"reflect"
 	"strconv"
 
 	"github.com/gradusp/crispy-ipvs/pkg/ipvs"
@@ -58,16 +59,19 @@ var (
 	ErrUnsupported = errors.New("unsupported")
 
 	//ErrVirtualServerNotExist ...
-	ErrVirtualServerNotExist = errors.New("virtual server not exit")
+	ErrVirtualServerNotExist = errors.New("virtual server does not exit")
 
 	//ErrRealServerNotExist ...
-	ErrRealServerNotExist = errors.New("real server not exit")
+	ErrRealServerNotExist = errors.New("real server does not exit")
+
+	//ErrExternal error is out from external
+	ErrExternal = errors.New("external error")
 )
 
 //Valid ...
 func (np NetworkProtocol) Valid() error {
 	s := string(np)
-	if _, ok := ipvs.String2NetworkTransport[s]; ok {
+	if _, ok := ipvs.String2NetworkTransport[s]; !ok {
 		return errors.Wrapf(ErrUnsupported, "NetworkProtocol(%s)", s)
 	}
 	return nil
@@ -76,7 +80,7 @@ func (np NetworkProtocol) Valid() error {
 //Valid ...
 func (sm ScheduleMethod) Valid() error {
 	s := string(sm)
-	if _, ok := ipvs.String2ScheduleMethod[s]; ok {
+	if _, ok := ipvs.String2ScheduleMethod[s]; !ok {
 		return errors.Wrapf(ErrUnsupported, "ScheduleMethod(%s)", s)
 	}
 	return nil
@@ -85,7 +89,7 @@ func (sm ScheduleMethod) Valid() error {
 //Valid ...
 func (pf PacketForwarder) Valid() error {
 	s := string(pf)
-	if _, ok := ipvs.String2PacketFwdMethod[s]; ok {
+	if _, ok := ipvs.String2PacketFwdMethod[s]; !ok {
 		return errors.Wrapf(ErrUnsupported, "PacketForwarder(%s)", s)
 	}
 	return nil
@@ -112,3 +116,13 @@ func (n Address) ToHostPort() (string, uint32, error) {
 func (VirtualServerAddress) isVirtualServerIdentity() {}
 
 func (VirtualServerFMark) isVirtualServerIdentity() {}
+
+//IsIdentitiesEq is Identities equal
+func IsIdentitiesEq(l, r VirtualServerIdentity) bool {
+	t1 := reflect.TypeOf(l)
+	t2 := reflect.TypeOf(r)
+	ret := t1 != nil && t2 != nil &&
+		t1.Comparable() && t2.Comparable() &&
+		l == r
+	return ret
+}

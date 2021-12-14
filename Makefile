@@ -5,7 +5,7 @@ $(value $(shell [ ! -d "$(CURDIR)/bin" ] && mkdir -p "$(CURDIR)/bin"))
 export GOBIN=$(CURDIR)/bin
 GOLANGCI_BIN:=$(GOBIN)/golangci-lint
 GOLANGCI_REPO=https://github.com/golangci/golangci-lint
-GOLANGCI_LATEST_VERSION:= $(shell git ls-remote --tags --refs --sort='v:refname' $(GOLANGCI_REPO)|tail -1|egrep -E -o "v\d+\.\d+\..*")
+GOLANGCI_LATEST_VERSION:= $(shell git ls-remote --tags --refs --sort='v:refname' $(GOLANGCI_REPO)|tail -1|egrep -o "v[0-9]+.*")
 NFPM_BIN:=$(GOBIN)/nfpm
 DEPLOY:=$(CURDIR)/deploy
 
@@ -95,6 +95,7 @@ generate: bin-tools
 	@PATH=$(PATH):$(GOBIN) && \
 	protoc -I $(CURDIR)/vendor/github.com/grpc-ecosystem/grpc-gateway/v2/ \
 		-I $(CURDIR)/3d-party \
+		-I /usr/local/include \
 		--go_opt=paths=source_relative \
 		--go-grpc_opt=paths=source_relative \
 		--go_out $(CURDIR)/pkg \
@@ -106,6 +107,7 @@ generate: bin-tools
 		ipvs/ipvs.proto && \
 	protoc -I $(CURDIR)/vendor/github.com/grpc-ecosystem/grpc-gateway/v2/ \
 		-I $(CURDIR)/3d-party \
+		-I /usr/local/include \
 		--proto_path=$(CURDIR)/api \
 		--openapiv2_out $(CURDIR)/internal/api \
 		--openapiv2_opt logtostderr=true \

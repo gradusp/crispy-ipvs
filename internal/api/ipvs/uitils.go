@@ -12,27 +12,27 @@ import (
 type (
 	//VirtualServerIdentityConv ...
 	VirtualServerIdentityConv struct {
-		ipvsAdm.VirtualServerIdentity
+		Identity ipvsAdm.VirtualServerIdentity
 	}
 
 	//NetworkProtocolConv ...
 	NetworkProtocolConv struct {
-		ipvsAdm.NetworkProtocol
+		NetworkProtocol ipvsAdm.NetworkProtocol
 	}
 
 	//VirtualServerConv ...
 	VirtualServerConv struct {
-		ipvsAdm.VirtualServer
+		VirtualServer ipvsAdm.VirtualServer
 	}
 
 	//RealServerConv ...
 	RealServerConv struct {
-		ipvsAdm.RealServer
+		RealServer ipvsAdm.RealServer
 	}
 
 	//AddressConv ...
 	AddressConv struct {
-		ipvsAdm.Address
+		Address ipvsAdm.Address
 	}
 )
 
@@ -41,7 +41,7 @@ func (identity VirtualServerIdentityConv) ToPb() (*ipvs.VirtualServerIdentity, e
 	const api = "VirtualServerIdentityConv/ToPb"
 
 	var ret ipvs.VirtualServerIdentity
-	switch t := identity.VirtualServerIdentity.(type) {
+	switch t := identity.Identity.(type) {
 	case ipvsAdm.VirtualServerFMark:
 		ret.By = &ipvs.VirtualServerIdentity_FirewallMark{FirewallMark: t.FirewallMark}
 	case ipvsAdm.VirtualServerAddress:
@@ -77,13 +77,15 @@ func (identity *VirtualServerIdentityConv) FromPb(src *ipvs.VirtualServerIdentit
 		if err := a.NetworkProtocol.Valid(); err != nil {
 			return errors.Wrap(err, api)
 		}
-		identity.VirtualServerIdentity = a
+		identity.Identity = a
+		return nil
 	case *ipvs.VirtualServerIdentity_FirewallMark:
-		identity.VirtualServerIdentity = ipvsAdm.VirtualServerFMark{
+		identity.Identity = ipvsAdm.VirtualServerFMark{
 			FirewallMark: t.FirewallMark,
 		}
+		return nil
 	}
-	return errors.Errorf("%s: unconvertible", api)
+	return errors.Wrapf(errors.New("inconvertible virtual server identity"), api)
 }
 
 //ToPb to *ipvs.NetworkTransport
@@ -107,7 +109,7 @@ func (conv *VirtualServerConv) FromPb(src *ipvs.VirtualServer) error {
 	if err = ret.ScheduleMethod.Valid(); err != nil {
 		return errors.Wrap(err, api)
 	}
-	ret.Identity = identity.VirtualServerIdentity
+	ret.Identity = identity.Identity
 	conv.VirtualServer = ret
 	return nil
 }
@@ -120,15 +122,15 @@ func (conv VirtualServerConv) ToPb() (*ipvs.VirtualServer, error) {
 	var err error
 
 	ret.Identity, err =
-		VirtualServerIdentityConv{VirtualServerIdentity: conv.VirtualServer.Identity}.ToPb()
+		VirtualServerIdentityConv{Identity: conv.VirtualServer.Identity}.ToPb()
 
 	if err != nil {
 		return nil, errors.Wrap(err, api)
 	}
-	if err = conv.ScheduleMethod.Valid(); err != nil {
+	if err = conv.VirtualServer.ScheduleMethod.Valid(); err != nil {
 		return nil, errors.Wrap(err, api)
 	}
-	ret.ScheduleMethod = ipvs.String2ScheduleMethod[string(conv.ScheduleMethod)]
+	ret.ScheduleMethod = ipvs.String2ScheduleMethod[string(conv.VirtualServer.ScheduleMethod)]
 	return &ret, nil
 }
 
@@ -138,16 +140,16 @@ func (conv RealServerConv) ToPb() (*ipvs.RealServer, error) {
 
 	ret := ipvs.RealServer{
 		Address:        new(ipvs.RealServerAddress),
-		Weight:         conv.Weight,
-		UpperThreshold: conv.UpperThreshold,
-		LowerThreshold: conv.LowerThreshold,
+		Weight:         conv.RealServer.Weight,
+		UpperThreshold: conv.RealServer.UpperThreshold,
+		LowerThreshold: conv.RealServer.LowerThreshold,
 	}
-	err := conv.PacketForwarder.Valid()
+	err := conv.RealServer.PacketForwarder.Valid()
 	if err != nil {
 		return nil, errors.Wrap(err, api)
 	}
-	ret.PacketForwarder = ipvs.String2PacketFwdMethod[string(conv.PacketForwarder)]
-	if ret.Address.Host, ret.Address.Port, err = conv.ToHostPort(); err != nil {
+	ret.PacketForwarder = ipvs.String2PacketFwdMethod[string(conv.RealServer.PacketForwarder)]
+	if ret.Address.Host, ret.Address.Port, err = conv.RealServer.ToHostPort(); err != nil {
 		return nil, errors.Wrap(err, api)
 	}
 
@@ -169,6 +171,12 @@ func (conv *RealServerConv) FromPb(src *ipvs.RealServer) error {
 	}
 	if e := ret.PacketForwarder.Valid(); e != nil {
 		return errors.Wrap(e, api)
+	}
+	if ret.LowerThreshold > ret.UpperThreshold {
+		return errors.Wrap(
+			errors.Errorf("lowerThreshold(%v) > upperThreshold(%v)", ret.LowerThreshold, ret.UpperThreshold),
+			api,
+		)
 	}
 	conv.RealServer = ret
 	return nil

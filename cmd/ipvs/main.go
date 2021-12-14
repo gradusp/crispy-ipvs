@@ -59,38 +59,3 @@ func main() {
 	})
 	logger.Info(ctx, "--== BYE ==--")
 }
-
-/*//
-
-a := ipvs.VServer_RoundRobin
-v := a.Descriptor().Values().ByNumber(a.Number())
-o := v.Options()
-ff, _ := o.(*descriptorpb.EnumValueOptions)
-if ff != nil {
-	a, b := proto.GetExtension(ff, ipvs.E_VServer_Name)
-	if b == nil {
-		ss := a.(*string)
-		*ss += ""
-		*ss = "12"
-		*ss += ""
-
-		a, _ = proto.GetExtension(ff, ipvs.E_VServer_Name)
-		ss = a.(*string)
-		*ss += ""
-
-	}
-}
-
-b := ipvs.VServer_Other
-v = b.Descriptor().Values().ByNumber(b.Number())
-switch ff := v.Options().(type) {
-case nil:
-case *descriptorpb.EnumValueOptions:
-	if a, b := proto.GetExtension(ff, ipvs.E_VServer_Name); b == nil {
-		ss := a.(*string)
-		*ss += ""
-	}
-}
-i := 1
-i++
-*/

@@ -13,7 +13,7 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
     version: "2.0";
     contact: {
       name: "Pavel Fiskovich";
-      url: "https://blog.bullgare.com/2020/07/complete-list-of-swagger-options-to-protobuf-file";
+      url: "https://khannz.medium.com/about";
     };
   };
   schemes: [HTTP];
@@ -93,11 +93,14 @@ message IssueReason {
     //external error that happens out from external libs
     ExternalError = 0;
 
+    //Something is not supported by IPVS implementor
+    Unsupported = 1;
+
     //when delete/update VS is not exist subject
-    VirtualServerNotFound = 1;
+    VirtualServerNotFound = 2;
 
     //when delete/update RS is not exist subject
-    RealServerNotFound = 2;
+    RealServerNotFound = 3;
   }
   //issue reason code
   Code code = 1;

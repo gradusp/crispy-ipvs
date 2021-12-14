@@ -11,13 +11,16 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/golang/protobuf/proto" //nolint:staticcheck
 	"github.com/gradusp/crispy-ipvs/pkg/ipvs"
 	ipvsAdm "github.com/gradusp/crispy-ipvs/pkg/net/ipvs"
 	"github.com/gradusp/go-platform/logger"
+	"github.com/gradusp/go-platform/pkg/jsonview"
 	"github.com/gradusp/go-platform/pkg/parallel"
 	"github.com/gradusp/go-platform/server"
 	grpcRt "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -84,6 +87,11 @@ func (srv *ipvsAdminSrv) ListVirtualServers(ctx context.Context, req *ipvs.ListV
 		err = srv.correctError(err)
 	}()
 
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.Bool("include-reals", req.GetIncludeReals()),
+	)
+
 	type (
 		itemT = *ipvs.VirtualServerWithReals
 		keyT  = ipvsAdm.VirtualServerIdentity
@@ -133,15 +141,21 @@ func (srv *ipvsAdminSrv) FindVirtualServer(ctx context.Context, req *ipvs.FindVi
 	defer func() {
 		err = srv.correctError(err)
 	}()
+	span := trace.SpanFromContext(ctx)
+
 	identity := req.GetVirtualServerIdentity()
+	span.SetAttributes(
+		attribute.Stringer("virtual-server", jsonview.Stringer(identity)),
+		attribute.Bool("include-reals", req.GetIncludeReals()),
+	)
 	var conv VirtualServerIdentityConv
 	if err = conv.FromPb(identity); err != nil {
+		err = srv.errWithDetails(codes.InvalidArgument, err.Error(), identity)
 		return
 	}
-
 	errSuccess := errors.New("1")
 	err = srv.admin.ListVirtualServers(ctx, func(vs ipvsAdm.VirtualServer) error {
-		if !(vs.Identity == conv) {
+		if !ipvsAdm.IsIdentitiesEq(vs.Identity, conv.Identity) {
 			return nil
 		}
 		var e error
@@ -172,7 +186,7 @@ func (srv *ipvsAdminSrv) FindVirtualServer(ctx context.Context, req *ipvs.FindVi
 		return
 	}
 	if resp == nil {
-		err = status.Errorf(codes.NotFound, "virtual-server(%v) is not found", conv.VirtualServerIdentity)
+		err = status.Errorf(codes.NotFound, "virtual-server %v is not found", conv.Identity)
 	}
 	return nil, err
 }
@@ -199,45 +213,63 @@ func (srv *ipvsAdminSrv) UpdateVirtualServers(ctx context.Context, req *ipvs.Upd
 		}
 		return ret
 	}
-	del := req.GetDelete()
-	resp = new(ipvs.UpdateVirtualServersResponse)
-	err = parallel.ExecAbstract(len(del), 10, func(i int) error {
-		toDel := del[i]
-		if whenSeen(toDel) {
-			return nil
-		}
-		iss, e := srv.delVS(ctx, toDel)
-		if e != nil {
-			return e
-		}
-		if iss != nil {
-			mx.Lock()
-			resp.Issues = append(resp.Issues, iss)
-			mx.Unlock()
-		}
-		return nil
-	})
-	if err != nil {
-		return
-	}
-	upd := req.GetUpdate()
 	forceUpsert := req.GetForceUpsert()
-	err = parallel.ExecAbstract(len(upd), 10, func(i int) error {
-		toUpd := upd[i]
-		if whenSeen(toUpd) {
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.Int("delete-count", len(req.GetDelete())),
+		attribute.Int("update-count", len(req.GetUpdate())),
+		attribute.Bool("force-upsert", forceUpsert),
+	)
+
+	resp = new(ipvs.UpdateVirtualServersResponse)
+	if del := req.GetDelete(); len(del) > 0 {
+		srv.addSpanDbgEvent(ctx, span, "delete", trace.WithAttributes(
+			attribute.Stringer("virtual-servers", jsonview.Stringer(del)),
+		))
+		err = parallel.ExecAbstract(len(del), 10, func(i int) error {
+			toDel := del[i]
+			if whenSeen(toDel) {
+				return nil
+			}
+			issue, e := srv.delVS(ctx, toDel)
+			if e != nil {
+				return e
+			}
+			if issue != nil {
+				mx.Lock()
+				resp.Issues = append(resp.Issues, issue)
+				mx.Unlock()
+			}
 			return nil
+		})
+		if err != nil {
+			return
 		}
-		iss, e := srv.updVS(ctx, toUpd, forceUpsert)
-		if e != nil {
-			return e
+	}
+	if upd := req.GetUpdate(); len(upd) > 0 {
+		srv.addSpanDbgEvent(ctx, span, "update", trace.WithAttributes(
+			attribute.Stringer("virtual-servers", jsonview.Stringer(upd)),
+		))
+		if forceUpsert && len(seen) > 0 {
+			seen = make(map[string]bool)
 		}
-		if iss != nil {
-			mx.Lock()
-			resp.Issues = append(resp.Issues, iss)
-			mx.Unlock()
-		}
-		return nil
-	})
+		err = parallel.ExecAbstract(len(upd), 10, func(i int) error {
+			toUpd := upd[i]
+			if whenSeen(toUpd) {
+				return nil
+			}
+			issue, e := srv.updVS(ctx, toUpd, forceUpsert)
+			if e != nil {
+				return e
+			}
+			if issue != nil {
+				mx.Lock()
+				resp.Issues = append(resp.Issues, issue)
+				mx.Unlock()
+			}
+			return nil
+		})
+	}
 	return resp, err
 }
 
@@ -264,139 +296,130 @@ func (srv *ipvsAdminSrv) UpdateRealServers(ctx context.Context, req *ipvs.Update
 		}
 		return ret
 	}
-	resp = new(ipvs.UpdateRealServersResponse)
+	forceUpsert := req.GetForceUpsert()
 	vsID := req.GetVirtualServerIdentity()
-	del := req.GetDelete()
-	err = parallel.ExecAbstract(len(del), 10, func(i int) error {
-		toDel := del[i]
-		if whenSeen(toDel) {
-			return nil
-		}
-		iss, e := srv.delRS(ctx, vsID, toDel)
-		if e != nil {
-			return e
-		}
-		if iss != nil {
-			mx.Lock()
-			resp.Issues = append(resp.Issues, iss)
-			mx.Unlock()
-		}
-		return nil
-	})
-	if err != nil {
+
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.Int("delete-count", len(req.GetDelete())),
+		attribute.Int("update-count", len(req.GetUpdate())),
+		attribute.Stringer("virtual-server", jsonview.Stringer(vsID)),
+		attribute.Bool("force-upsert", forceUpsert),
+	)
+
+	var vsIDConv VirtualServerIdentityConv
+	if err = vsIDConv.FromPb(vsID); err != nil {
+		err = srv.errWithDetails(codes.InvalidArgument, err.Error(), vsID)
 		return
 	}
-	upd := req.GetUpdate()
-	forceUpsert := req.GetForceUpsert()
-	err = parallel.ExecAbstract(len(upd), 10, func(i int) error {
-		toUpd := upd[i]
-		if whenSeen(toUpd.Address) {
+
+	resp = new(ipvs.UpdateRealServersResponse)
+	if del := req.GetDelete(); len(del) > 0 {
+		srv.addSpanDbgEvent(ctx, span, "delete", trace.WithAttributes(
+			attribute.Stringer("real-servers", jsonview.Stringer(del)),
+		))
+		err = parallel.ExecAbstract(len(del), 10, func(i int) error {
+			toDel := del[i]
+			if whenSeen(toDel) {
+				return nil
+			}
+			iss, e := srv.delRS(ctx, vsIDConv.Identity, toDel)
+			if e != nil {
+				return e
+			}
+			if iss != nil {
+				mx.Lock()
+				resp.Issues = append(resp.Issues, iss)
+				mx.Unlock()
+			}
 			return nil
+		})
+		if err != nil {
+			return
 		}
-		iss, e := srv.updRS(ctx, vsID, toUpd, forceUpsert)
-		if e != nil {
-			return e
+	}
+	if upd := req.GetUpdate(); len(upd) > 0 {
+		srv.addSpanDbgEvent(ctx, span, "update", trace.WithAttributes(
+			attribute.Stringer("real-servers", jsonview.Stringer(upd)),
+		))
+		if forceUpsert && len(seen) > 0 {
+			seen = make(map[string]bool)
 		}
-		if iss != nil {
-			mx.Lock()
-			resp.Issues = append(resp.Issues, iss)
-			mx.Unlock()
-		}
-		return nil
-	})
+		err = parallel.ExecAbstract(len(upd), 10, func(i int) error {
+			toUpd := upd[i]
+			if whenSeen(toUpd.Address) {
+				return nil
+			}
+			iss, e := srv.updRS(ctx, vsIDConv.Identity, toUpd, forceUpsert)
+			if e != nil {
+				return e
+			}
+			if iss != nil {
+				mx.Lock()
+				resp.Issues = append(resp.Issues, iss)
+				mx.Unlock()
+			}
+			return nil
+		})
+	}
 	return resp, err
 }
 
-func (srv *ipvsAdminSrv) delRS(ctx context.Context, vsID *ipvs.VirtualServerIdentity, toDel *ipvs.RealServerAddress) (*ipvs.RealServerIssue, error) {
+func (srv *ipvsAdminSrv) delRS(ctx context.Context, identity ipvsAdm.VirtualServerIdentity, toDel *ipvs.RealServerAddress) (*ipvs.RealServerIssue, error) {
 	var rs AddressConv
-	var vs VirtualServerIdentityConv
 	rs.FromPb(toDel)
-	err := vs.FromPb(vsID)
-	if err != nil {
-		return nil, err
-	}
-	if err = srv.admin.RemoveRealServer(ctx, vs, rs.Address); err == nil {
+	err := srv.admin.RemoveRealServer(ctx, identity, rs.Address)
+	if err == nil {
 		return nil, nil
 	}
-	var reason *ipvs.IssueReason
-	if errors.Is(err, ipvsAdm.ErrVirtualServerNotExist) {
+	var issue *ipvs.RealServerIssue
+	if reason := srv.ifReason(err); reason != nil {
 		err = nil
-		reason = &ipvs.IssueReason{
-			Code:    ipvs.IssueReason_VirtualServerNotFound,
-			Message: ipvs.IssueReason_VirtualServerNotFound.String(),
-		}
-	} else if errors.Is(err, ipvsAdm.ErrRealServerNotExist) {
-		err = nil
-		reason = &ipvs.IssueReason{
-			Code:    ipvs.IssueReason_RealServerNotFound,
-			Message: ipvs.IssueReason_RealServerNotFound.String(),
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
-	issue := &ipvs.RealServerIssue{
-		When: &ipvs.RealServerIssue_Delete{
-			Delete: &ipvs.RealServerAddress{
-				Host: toDel.GetHost(),
-				Port: toDel.GetPort(),
+		issue = &ipvs.RealServerIssue{
+			When: &ipvs.RealServerIssue_Delete{
+				Delete: &ipvs.RealServerAddress{
+					Host: toDel.GetHost(),
+					Port: toDel.GetPort(),
+				},
 			},
-		},
-		Reason: reason,
+			Reason: reason,
+		}
 	}
-	return issue, nil
+	return issue, err
 }
 
-func (srv *ipvsAdminSrv) updRS(ctx context.Context, vsID *ipvs.VirtualServerIdentity, toUpd *ipvs.RealServer, forceUpsert bool) (*ipvs.RealServerIssue, error) {
-	var vs VirtualServerIdentityConv
+func (srv *ipvsAdminSrv) updRS(ctx context.Context, identity ipvsAdm.VirtualServerIdentity, toUpd *ipvs.RealServer, forceUpsert bool) (*ipvs.RealServerIssue, error) {
 	var rs RealServerConv
-
-	err := vs.FromPb(vsID)
+	err := rs.FromPb(toUpd)
 	if err != nil {
-		return nil, err
-	}
-	if err = rs.FromPb(toUpd); err != nil {
-		return nil, err
+		return nil, srv.errWithDetails(codes.InvalidArgument, err.Error(), toUpd)
 	}
 	var opts []ipvsAdm.AdminOption
 	if forceUpsert {
 		opts = append(opts, ipvsAdm.ForceAddIfNotExist{})
 	}
-	if err = srv.admin.UpdateRealServer(ctx, vs, rs.RealServer, opts...); err == nil {
+	if err = srv.admin.UpdateRealServer(ctx, identity, rs.RealServer, opts...); err == nil {
 		return nil, nil
 	}
 
-	var reason *ipvs.IssueReason
-	if errors.Is(err, ipvsAdm.ErrVirtualServerNotExist) {
+	var issue *ipvs.RealServerIssue
+	if reason := srv.ifReason(err); reason != nil {
 		err = nil
-		reason = &ipvs.IssueReason{
-			Code:    ipvs.IssueReason_VirtualServerNotFound,
-			Message: ipvs.IssueReason_VirtualServerNotFound.String(),
-		}
-	} else if errors.Is(err, ipvsAdm.ErrRealServerNotExist) {
-		err = nil
-		reason = &ipvs.IssueReason{
-			Code:    ipvs.IssueReason_RealServerNotFound,
-			Message: ipvs.IssueReason_RealServerNotFound.String(),
+		issue = &ipvs.RealServerIssue{
+			When: &ipvs.RealServerIssue_Update{
+				Update: toUpd,
+			},
+			Reason: reason,
 		}
 	}
-	if err != nil {
-		return nil, err
-	}
-	issue := &ipvs.RealServerIssue{
-		When: &ipvs.RealServerIssue_Update{
-			Update: toUpd,
-		},
-		Reason: reason,
-	}
-	return issue, nil
+	return issue, err
 }
 
 func (srv *ipvsAdminSrv) updVS(ctx context.Context, toUpd *ipvs.VirtualServer, forceUpsert bool) (*ipvs.VirtualServerIssue, error) {
 	var vsConv VirtualServerConv
 	err := vsConv.FromPb(toUpd)
 	if err != nil {
-		return nil, err
+		return nil, srv.errWithDetails(codes.InvalidArgument, err.Error(), toUpd)
 	}
 	var opts []ipvsAdm.AdminOption
 	if forceUpsert {
@@ -406,14 +429,11 @@ func (srv *ipvsAdminSrv) updVS(ctx context.Context, toUpd *ipvs.VirtualServer, f
 		return nil, nil
 	}
 	var issue *ipvs.VirtualServerIssue
-	if errors.Is(err, ipvsAdm.ErrVirtualServerNotExist) {
+	if reason := srv.ifReason(err); reason != nil {
 		err = nil
 		issue = &ipvs.VirtualServerIssue{
-			When: &ipvs.VirtualServerIssue_Update{Update: toUpd},
-			Reason: &ipvs.IssueReason{
-				Code:    ipvs.IssueReason_VirtualServerNotFound,
-				Message: ipvs.IssueReason_VirtualServerNotFound.String(),
-			},
+			When:   &ipvs.VirtualServerIssue_Update{Update: toUpd},
+			Reason: reason,
 		}
 	}
 	return issue, err
@@ -423,23 +443,20 @@ func (srv *ipvsAdminSrv) delVS(ctx context.Context, toDel *ipvs.VirtualServerIde
 	var identityConv VirtualServerIdentityConv
 	err := identityConv.FromPb(toDel)
 	if err != nil {
-		return nil, err
+		return nil, srv.errWithDetails(codes.InvalidArgument, err.Error(), toDel)
 	}
-	if err = srv.admin.RemoveVirtualSerer(ctx, identityConv); err == nil {
+	if err = srv.admin.RemoveVirtualSerer(ctx, identityConv.Identity); err == nil {
 		return nil, nil
 	}
-	var iss *ipvs.VirtualServerIssue
-	if errors.Is(err, ipvsAdm.ErrVirtualServerNotExist) {
+	var issue *ipvs.VirtualServerIssue
+	if reason := srv.ifReason(err); reason != nil {
 		err = nil
-		iss = &ipvs.VirtualServerIssue{
-			When: &ipvs.VirtualServerIssue_Delete{Delete: toDel},
-			Reason: &ipvs.IssueReason{
-				Code:    ipvs.IssueReason_VirtualServerNotFound,
-				Message: ipvs.IssueReason_VirtualServerNotFound.String(),
-			},
+		issue = &ipvs.VirtualServerIssue{
+			When:   &ipvs.VirtualServerIssue_Delete{Delete: toDel},
+			Reason: reason,
 		}
 	}
-	return iss, err
+	return issue, err
 }
 
 func (srv *ipvsAdminSrv) addSpanDbgEvent(ctx context.Context, span trace.Span, eventName string, opts ...trace.EventOption) { //nolint:unused
@@ -491,4 +508,42 @@ func (srv *ipvsAdminSrv) enter(ctx context.Context) (leave func(), err error) {
 	}
 	err = status.FromContextError(err).Err()
 	return
+}
+
+func (srv *ipvsAdminSrv) ifReason(err error) *ipvs.IssueReason {
+	if err == nil {
+		return nil
+	}
+	var reason *ipvs.IssueReason
+	if errors.Is(err, ipvsAdm.ErrVirtualServerNotExist) {
+		reason = &ipvs.IssueReason{
+			Code: ipvs.IssueReason_VirtualServerNotFound,
+		}
+	} else if errors.Is(err, ipvsAdm.ErrUnsupported) {
+		reason = &ipvs.IssueReason{
+			Code: ipvs.IssueReason_Unsupported,
+		}
+	} else if errors.Is(err, ipvsAdm.ErrRealServerNotExist) {
+		reason = &ipvs.IssueReason{
+			Code: ipvs.IssueReason_RealServerNotFound,
+		}
+	} else if errors.Is(err, ipvsAdm.ErrExternal) {
+		reason = &ipvs.IssueReason{
+			Code: ipvs.IssueReason_ExternalError,
+		}
+	}
+	if reason != nil {
+		reason.Message = err.Error()
+	}
+	return reason
+}
+
+func (srv *ipvsAdminSrv) errWithDetails(code codes.Code, msg string, details ...proto.Message) error {
+	stat := status.New(code, msg)
+	if len(details) > 0 {
+		if stat2, e := stat.WithDetails(details...); e == nil {
+			return stat2.Err()
+		}
+	}
+	return stat.Err()
 }

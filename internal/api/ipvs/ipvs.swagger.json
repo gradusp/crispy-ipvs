@@ -5,7 +5,7 @@
     "version": "2.0",
     "contact": {
       "name": "Pavel Fiskovich",
-      "url": "https://blog.bullgare.com/2020/07/complete-list-of-swagger-options-to-protobuf-file"
+      "url": "https://khannz.medium.com/about"
     }
   },
   "tags": [
@@ -161,11 +161,12 @@
       "type": "string",
       "enum": [
         "ExternalError",
+        "Unsupported",
         "VirtualServerNotFound",
         "RealServerNotFound"
       ],
       "default": "ExternalError",
-      "title": "- ExternalError: external error that happens out from external libs\n - VirtualServerNotFound: when delete/update VS is not exist subject\n - RealServerNotFound: when delete/update RS is not exist subject"
+      "title": "- ExternalError: external error that happens out from external libs\n - Unsupported: Something is not supported by IPVS implementor\n - VirtualServerNotFound: when delete/update VS is not exist subject\n - RealServerNotFound: when delete/update RS is not exist subject"
     },
     "ipvsFindVirtualServerRequest": {
       "type": "object",
