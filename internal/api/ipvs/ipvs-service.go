@@ -425,7 +425,7 @@ func (srv *ipvsAdminSrv) updVS(ctx context.Context, toUpd *ipvs.VirtualServer, f
 	if forceUpsert {
 		opts = append(opts, ipvsAdm.ForceAddIfNotExist{})
 	}
-	if err = srv.admin.UpdateVirtualSerer(ctx, vsConv.VirtualServer, opts...); err == nil {
+	if err = srv.admin.UpdateVirtualServer(ctx, vsConv.VirtualServer, opts...); err == nil {
 		return nil, nil
 	}
 	var issue *ipvs.VirtualServerIssue
@@ -445,7 +445,7 @@ func (srv *ipvsAdminSrv) delVS(ctx context.Context, toDel *ipvs.VirtualServerIde
 	if err != nil {
 		return nil, srv.errWithDetails(codes.InvalidArgument, err.Error(), toDel)
 	}
-	if err = srv.admin.RemoveVirtualSerer(ctx, identityConv.Identity); err == nil {
+	if err = srv.admin.RemoveVirtualServer(ctx, identityConv.Identity); err == nil {
 		return nil, nil
 	}
 	var issue *ipvs.VirtualServerIssue

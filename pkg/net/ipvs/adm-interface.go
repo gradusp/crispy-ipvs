@@ -21,8 +21,8 @@ type (
 		ListVirtualServers(ctx context.Context, cons VirtualServerConsumer) error
 		ListRealServers(ctx context.Context, vsKey VirtualServerIdentity, cons RealServerConsumer) error
 
-		UpdateVirtualSerer(ctx context.Context, serv VirtualServer, opts ...AdminOption) error
-		RemoveVirtualSerer(ctx context.Context, vsKey VirtualServerIdentity, opts ...AdminOption) error
+		UpdateVirtualServer(ctx context.Context, serv VirtualServer, opts ...AdminOption) error
+		RemoveVirtualServer(ctx context.Context, vsKey VirtualServerIdentity, opts ...AdminOption) error
 
 		UpdateRealServer(ctx context.Context, vsKey VirtualServerIdentity, serv RealServer, opts ...AdminOption) error
 		RemoveRealServer(ctx context.Context, vsKey VirtualServerIdentity, servAddress Address, opts ...AdminOption) error

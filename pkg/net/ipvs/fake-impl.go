@@ -29,13 +29,13 @@ func (fakeIpvsAdmin) ListRealServers(_ context.Context, _ VirtualServerIdentity,
 	return errNotSupport
 }
 
-//UpdateVirtualSerer impl IpvsAdmin
-func (fakeIpvsAdmin) UpdateVirtualSerer(_ context.Context, _ VirtualServer, _ ...AdminOption) error {
+//UpdateVirtualServer impl IpvsAdmin
+func (fakeIpvsAdmin) UpdateVirtualServer(_ context.Context, _ VirtualServer, _ ...AdminOption) error {
 	return errNotSupport
 }
 
-//RemoveVirtualSerer impl IpvsAdmin
-func (fakeIpvsAdmin) RemoveVirtualSerer(_ context.Context, _ VirtualServerIdentity, _ ...AdminOption) error {
+//RemoveVirtualServer impl IpvsAdmin
+func (fakeIpvsAdmin) RemoveVirtualServer(_ context.Context, _ VirtualServerIdentity, _ ...AdminOption) error {
 	return errNotSupport
 }
 

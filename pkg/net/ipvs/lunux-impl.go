@@ -127,9 +127,9 @@ func (impl *ipvsAdminImpl) ListRealServers(_ context.Context, identity VirtualSe
 	return err
 }
 
-//UpdateVirtualSerer impl IpvsAdmin
-func (impl *ipvsAdminImpl) UpdateVirtualSerer(_ context.Context, vServer VirtualServer, opts ...AdminOption) error {
-	const api = ipvsImpl + "/UpdateVirtualSerer"
+//UpdateVirtualServer impl IpvsAdmin
+func (impl *ipvsAdminImpl) UpdateVirtualServer(_ context.Context, vServer VirtualServer, opts ...AdminOption) error {
+	const api = ipvsImpl + "/UpdateVirtualServer"
 
 	vs := new(virtualService)
 	err := impl.identity2Address(vServer.Identity, vs)
@@ -165,9 +165,9 @@ func (impl *ipvsAdminImpl) UpdateVirtualSerer(_ context.Context, vServer Virtual
 	return errors.Wrap(err, api)
 }
 
-//RemoveVirtualSerer impl IpvsAdmin
-func (impl *ipvsAdminImpl) RemoveVirtualSerer(_ context.Context, identity VirtualServerIdentity, opts ...AdminOption) error {
-	const api = ipvsImpl + "/RemoveVirtualSerer"
+//RemoveVirtualServer impl IpvsAdmin
+func (impl *ipvsAdminImpl) RemoveVirtualServer(_ context.Context, identity VirtualServerIdentity, opts ...AdminOption) error {
+	const api = ipvsImpl + "/RemoveVirtualServer"
 
 	vs := new(virtualService)
 	err := impl.identity2Address(identity, vs)
